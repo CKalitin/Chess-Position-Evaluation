@@ -1,2 +1,5 @@
 # Lichess dataset
 *.zst
+
+# Models
+*.pth
