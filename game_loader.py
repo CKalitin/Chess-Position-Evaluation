@@ -1,40 +1,36 @@
 import chess.pgn
 import pandas as pd
-import re
+import itertools
 
 pgn_file_path = "D:/_Dev-HDD/Chess-Position-Evaluation/lichess_db_standard_rated_2024-07_no_time.pgn"
 
-headers = ["Index", "Result", "WhiteElo", "BlackElo", "Moves"]
-
-# open the pgn_exmaple.pgn file, remove all time control information, then write to a new file
-# example 1. b3 {  [%clk 0:01:00]  } c6 {  [%clk 0:01:00]  } 2. c3 {  [%clk 0:01:00] -> 1. b3 c6 2. c3
-def delete_time():
-    index = 0
-    with open(pgn_file_path) as pgn_file:
-        with open("D:/_Dev-HDD/Chess-Position-Evaluation/lichess_db_standard_rated_2024-07_no_time.pgn", "w") as new_pgn_file:
-            for line in pgn_file:
-                new_line = re.sub(r"\{.*?\}", "", line)
-                
-                # Remove all secondary move numbers. Eg. 1. e3 1... e6 -> 1. e3 e6
-                new_line = re.sub(r"\d+\.\.\.", "", new_line)
-                
-                # There are two extra spaces in between each player's moves. Eg. 1. e3   e6 instead of 1. e3 e6, fix the line above to remove these extra spaces
-                new_line = re.sub("   ", " ", new_line)
-                
-                new_pgn_file.write(new_line)
-                
-                index += 1
-                if index % 100000 == 0: print(str(index) + ", " + str(index/1000000) + "%")
-
-def open_games(start_index, end_index):
-    data_frame = pd.DataFrame(columns=headers)
+# Load a range of lines from a file (eg. lines 100 to 200)
+# I fucking love Python, this did it, awesome feature
+class CustomPgnTextFile:
+    def __init__(self, path, start_game_index, end_game_index):
+        self.current_line = 0
+        with open(path, 'r') as file:
+            # + end_game_index because when a game is found, py chess iterates over one extra line
+            self.lines_list = list(itertools.islice(file, start_game_index * 20, end_game_index * 20 + end_game_index)) # 20 lines per pgn game
     
-    with open(pgn_file_path) as pgn_file:
-        for i in range(start_index, end_index):
-            game = chess.pgn.read_game(pgn_file) # Iterate over all the games, what happens if we exit this function and return later?
-        
-            data_frame.loc[i] = [i, game.headers["Result"], game.headers["WhiteElo"], game.headers["BlackElo"], game.mainline_moves()]
-            
+    def readline(self):
+        self.current_line += 1
+        return self.lines_list[self.current_line - 1]
+
+def load_games(start_game_index, num_games, min_white_elo):
+    data_frame = pd.DataFrame(columns=["Game Index", "Result", "AvgElo", "Moves"])
+    
+    iters = -1
+    while len(data_frame) < num_games:
+        iters += 1
+        if iters % num_games == 0: pgn_file = CustomPgnTextFile(pgn_file_path, start_game_index + iters, start_game_index + iters + num_games) # Batches of size num_games
+        game = chess.pgn.read_game(pgn_file)
+        if "WhiteElo" not in game.headers or int(game.headers["WhiteElo"]) < min_white_elo: continue
+        data_frame.loc[len(data_frame)] = [iters + start_game_index, game.headers["Result"], (int(game.headers["WhiteElo"])+int(game.headers["BlackElo"]))/2, game.mainline_moves()]
+    
     print(data_frame)
-        
-delete_time()
+    
+    print(f"Loaded {len(data_frame)} games. Iterated over {iters} games.")
+    
+load_games(10, 10, 2500)
+
