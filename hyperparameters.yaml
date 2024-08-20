@@ -1,0 +1,10 @@
+dqn-1:
+  memory_size: 100000
+  training_batch_size: 512
+  epsilon_init: 1
+  epsilon_decay: 0.999
+  epsilon_min: 0.1
+  learning_rate: 0.001
+  min_avg_elo: 1000
+  training_move: 20 # Which move in the games we're training on, /2 bc. 2 moves per player
+  

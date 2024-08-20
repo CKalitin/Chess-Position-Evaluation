@@ -20,22 +20,22 @@ class CustomPgnTextFile:
 
 class GameLoader:
     def __init__(self):
-        self.games_data_frame = pd.DataFrame(columns=["Dataset Index", "Result", "AvgElo", "Moves"])
+        self.headers = columns=["dataset_index", "result", "avg_elo", "moves"]
 
-    def load_games(self, start_game_index, num_games, min_white_elo):
-        data_frame = pd.DataFrame(columns=["Dataset Index", "Result", "AvgElo", "Moves"])
+    def load_games(self, start_game_index, num_games, min_avg_elo):
+        data_frame = pd.DataFrame(columns=self.headers)
         
-        iters = -1
+        iters = 0
         while len(data_frame) < num_games:
-            iters += 1
-            if iters % num_games == 0: pgn_file = CustomPgnTextFile(pgn_file_path, start_game_index + iters, start_game_index + iters + num_games) # Batches of size num_games
+            iters += 1 # Iters added before the if elo to count games correctly, correct with -1 later
+            if (iters-1) % num_games == 0: pgn_file = CustomPgnTextFile(pgn_file_path, start_game_index + iters, start_game_index + iters + num_games) # Batches of size num_games
             game = chess.pgn.read_game(pgn_file)
-            if "WhiteElo" not in game.headers or int(game.headers["WhiteElo"]) < min_white_elo: continue
-            data_frame.loc[len(data_frame)] = [iters + start_game_index, game.headers["Result"], (int(game.headers["WhiteElo"])+int(game.headers["BlackElo"]))/2, game.mainline_moves()]
-
+            if "WhiteElo" not in game.headers or (int(game.headers["WhiteElo"])+int(game.headers["BlackElo"]))/2 < min_avg_elo: continue # Check if contains white elo because the final game will likely be incompletely read
+            data_frame.loc[len(data_frame)] = [iters - 1 + start_game_index, game.headers["Result"], (int(game.headers["WhiteElo"])+int(game.headers["BlackElo"]))/2, game.mainline_moves()]
+            
         print(f"Loaded {len(data_frame)} games. Iterated over {iters} games.")
         
-        self.games_data_frame = data_frame
+        return data_frame, iters
     
     # Multiply moves by 2 because each "move" has two moves for each player
     def moves_to_fen(self, mainline_moves, num_moves):
