@@ -33,7 +33,7 @@ class GameLoader:
             if "WhiteElo" not in game.headers or (int(game.headers["WhiteElo"])+int(game.headers["BlackElo"]))/2 < min_avg_elo: continue # Check if contains white elo because the final game will likely be incompletely read
             data_frame.loc[len(data_frame)] = [iters - 1 + start_game_index, game.headers["Result"], (int(game.headers["WhiteElo"])+int(game.headers["BlackElo"]))/2, game.mainline_moves()]
             
-        print(f"Loaded {len(data_frame)} games. Iterated over {iters} games.")
+        #print(f"Loaded {len(data_frame)} games. Iterated over {iters} games.")
         
         return data_frame, iters
     

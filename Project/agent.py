@@ -12,7 +12,7 @@ class Agent:
         self.trainer = trainer
         self.hyperparameters = hyperparameters
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hyperparameters["learning_rate"])
-        self.memory = deque([], maxlen=self.hyperparameters["memory_size"])
+        self.memory = deque([], maxlen=self.hyperparameters["training_memory_size"]) # Size in number of games
         self.game_loader = gl.GameLoader()
     
     def train(self):
@@ -30,21 +30,25 @@ class Agent:
             
             for i in range(self.hyperparameters["training_batch_size"]):
                 fen_as_tensor = self.fen_to_tensor(self.game_loader.moves_to_fen(training_games['moves'][i], self.hyperparameters["training_move"]))
-                model_output = self.get_epsilon_model_output(epsilon, fen_as_tensor)
+                model_output, type = self.get_epsilon_model_output(epsilon, fen_as_tensor)
                 reward = self.get_reward(training_games['result'][i], model_output)
-                
                 self.memory.append((fen_as_tensor, model_output, reward))
             
-            self.trainer.train_step(self.memory)
+            print(f"Reward: {reward} {type} {num_games} {epsilon} {model_output}")
+            state, model_output, reward = zip(*self.memory)
+            self.trainer.train_step(state, model_output, reward)
             epsilon = max(epsilon * self.hyperparameters["epsilon_decay"], self.hyperparameters["epsilon_min"])
+            
+            #if num_games > 0: return
     
     def get_epsilon_model_output(self, epsilon, model_input):
-        if random.uniform(0, 1) < epsilon: return random.uniform(-1, 1)
-        else: return self.model(model_input)
+        if random.uniform(0, 1) < epsilon: return random.uniform(-1.5, 1.5), "r"
+        else: return self.model(model_input)[0], "m" # Tensor to float
     
     def get_reward(self, game_result, model_output):
+        if game_result not in { "1-0": 1, "0-1": -1, "1/2-1/2": 0 }: return 0
         translated_game_result = { "1-0": 1, "0-1": -1, "1/2-1/2": 0 }[game_result]
-        return -0.25*(translated_game_result - model_output)**2 # + 0.0625 # Maybe you need positive rewards? try this later
+        return 1 if abs(translated_game_result - model_output) < 0.5 else -1
     
     def fen_to_tensor(self, fen):
         piece_to_value = { 'K': 1, 'Q': 0.8, 'R': 0.5, 'B': 0.4, 'N': 0.3, 'P': 0.1, 'k': -1, 'q': -0.8, 'r': -0.5, 'b': -0.4, 'n': -0.3, 'p': -0.1 }
@@ -60,6 +64,6 @@ class Agent:
 
 with open("Project/hyperparameters.yaml", "r") as file: hyperparameters = yaml.safe_load(file)['dqn-1']
 model = models.DQN()
-trainer = models.QTrainer(model, hyperparameters["learning_rate"])
+trainer = models.QTrainer(model, hyperparameters["learning_rate"], hyperparameters["discount_factor"])
 agent = Agent(model, trainer, hyperparameters)
 agent.train()
