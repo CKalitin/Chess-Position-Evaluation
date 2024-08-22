@@ -24,32 +24,47 @@ class DQN(nn.Module):
         x = self.maxpool2(x)
         
         x = self.flat(x)
+        
         x = self.fc3(x)
         
         return x
         
 class QTrainer():
-    def __init__(self, model, lr, gamma):
+    def __init__(self, model, lr):
         self.model = model
         self.lr = lr
-        self.gamma = gamma
         
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        self.criterion = nn.BCEWithLogitsLoss() # Mean Squared Error Loss
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
+        self.criterion = nn.MSELoss()
     
-    def train_step(self, state, model_output, reward):
+    def fake_train_step(self, state, action, reward):
         # Tuples to list: 
         state = torch.stack([s.clone().detach() for s in state])
-        model_output = [m for m in model_output]
+        action = [m for m in action]
         reward = [r for r in reward]
         
-        q_value = torch.zeros(len(state))
+        q_value = torch.zeros(len(state), 3)
         for i in range(len(state)): q_value[i] = self.model(state[i])
         
         target = q_value.clone()
-        for i in range(len(target)): target[i] = reward[i] + self.gamma * model_output[i]
+        for i in range(len(target)): target[i][torch.argmax(action[i]).item()] = reward[i]
         
         self.optimizer.zero_grad()
         loss = self.criterion(q_value, target)
         loss.backward()
         self.optimizer.step()
+        
+        return loss.item()
+    
+    def train_step(self, state, outcome):
+        state = torch.stack(state)
+        outcome = torch.tensor(outcome, dtype=torch.float32)
+        
+        pred_action = torch.tensor([self.model(s) for s in state], dtype=torch.float32, requires_grad=True)
+        
+        self.optimizer.zero_grad()
+        loss = self.criterion(pred_action, outcome)
+        loss.backward()
+        self.optimizer.step()
+        
+        return loss.item()

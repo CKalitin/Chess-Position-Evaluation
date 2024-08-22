@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import game_loader as gl
 import models
+import logger
 import yaml
 from collections import deque
 import random
@@ -14,6 +15,7 @@ class Agent:
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hyperparameters["learning_rate"])
         self.memory = deque([], maxlen=self.hyperparameters["training_memory_size"]) # Size in number of games
         self.game_loader = gl.GameLoader()
+        self.logger = logger.Logger()
     
     def train(self):
         print('cuda' if torch.cuda.is_available() else 'cpu')
@@ -30,25 +32,22 @@ class Agent:
             
             for i in range(self.hyperparameters["training_batch_size"]):
                 fen_as_tensor = self.fen_to_tensor(self.game_loader.moves_to_fen(training_games['moves'][i], self.hyperparameters["training_move"]))
-                model_output, type = self.get_epsilon_model_output(epsilon, fen_as_tensor)
-                reward = self.get_reward(training_games['result'][i], model_output)
-                self.memory.append((fen_as_tensor, model_output, reward))
+                action = self.get_epsilon_action(epsilon, fen_as_tensor)
+                #reward = self.get_reward(training_games['result'][i], action)
+                outcome = { "1-0": 1, "0-1": -1, "1/2-1/2": 0, "*": 0 }[training_games['result'][i]]
+                self.memory.append((fen_as_tensor, outcome))
             
-            print(f"Reward: {reward} {type} {num_games} {epsilon} {model_output}")
-            state, model_output, reward = zip(*self.memory)
-            self.trainer.train_step(state, model_output, reward)
+            state, outcome = zip(*self.memory)
+            loss = self.trainer.train_step(state, outcome)
             epsilon = max(epsilon * self.hyperparameters["epsilon_decay"], self.hyperparameters["epsilon_min"])
             
-            #if num_games > 0: return
+            self.logger.log_loss(loss)
+            self.logger.display_charts(num_games, epsilon)
+            print(f"Reward: {outcome[self.hyperparameters['training_batch_size']-1]} {num_games} {round(epsilon*1000)/1000} {action}")
     
-    def get_epsilon_model_output(self, epsilon, model_input):
-        if random.uniform(0, 1) < epsilon: return random.uniform(-1.5, 1.5), "r"
-        else: return self.model(model_input)[0], "m" # Tensor to float
-    
-    def get_reward(self, game_result, model_output):
-        if game_result not in { "1-0": 1, "0-1": -1, "1/2-1/2": 0 }: return 0
-        translated_game_result = { "1-0": 1, "0-1": -1, "1/2-1/2": 0 }[game_result]
-        return 1 if abs(translated_game_result - model_output) < 0.5 else -1
+    def get_epsilon_action(self, epsilon, model_input):
+        if random.uniform(0, 1) < epsilon: return torch.tensor(random.uniform(-1.5, 1.5))
+        return self.model(model_input)
     
     def fen_to_tensor(self, fen):
         piece_to_value = { 'K': 1, 'Q': 0.8, 'R': 0.5, 'B': 0.4, 'N': 0.3, 'P': 0.1, 'k': -1, 'q': -0.8, 'r': -0.5, 'b': -0.4, 'n': -0.3, 'p': -0.1 }
@@ -64,6 +63,6 @@ class Agent:
 
 with open("Project/hyperparameters.yaml", "r") as file: hyperparameters = yaml.safe_load(file)['dqn-1']
 model = models.DQN()
-trainer = models.QTrainer(model, hyperparameters["learning_rate"], hyperparameters["discount_factor"])
+trainer = models.QTrainer(model, hyperparameters["learning_rate"])
 agent = Agent(model, trainer, hyperparameters)
 agent.train()
